@@ -1,0 +1,6 @@
+{
+  "name": "ZARA AI Voice Assistant",
+  "description": "Personal bilingual (Urdu/English) AI voice assistant with 10 personality emotion modes, built-in website builder, voice input/output, and reminders.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

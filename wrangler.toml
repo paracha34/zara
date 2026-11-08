@@ -1,0 +1,24 @@
+name = "zara-ai-api"
+main = "workers/api.ts"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Worker handles /api/* routes — Cloudflare Pages handles static frontend assets
+[env.production]
+name = "zara-ai-api"
+
+# Secrets to set in Cloudflare Dashboard:
+# wrangler secret put GEMINI_API_KEY
+# wrangler secret put GOOGLE_TTS_API_KEY (optional, for realistic Urdu voice)
+
+# Optional: KV namespace for persistent data
+# [[kv_namespaces]]
+# binding = "ZARA_KV"
+# id = "your_kv_namespace_id"
+
+[build]
+command = "npm run build"
+cwd = "."
+
+[site]
+bucket = "./dist"
