@@ -559,79 +559,45 @@ app.post('/api/settings', (req, res) => {
 // 7. TTS Endpoint — Google Cloud Text-to-Speech
 app.post('/api/tts', async (req, res) => {
   try {
-    const { text, language = 'ur-PK', speed = 1.0 } = req.body;
+    const { text, language = 'ur-PK', speed = 1.0 } = req.body ?? {};
+    if (typeof text !== 'string' || !text.trim()) return res.status(400).json({ error: 'Text is required' });
 
-    if (!text || typeof text !== 'string') {
-      return res.status(400).json({ error: 'Text is required' });
-    }
+    // Use a dedicated Google Cloud TTS key; GEMINI_API_KEY is not a TTS credential.
+    const googleTtsApiKey = process.env.GOOGLE_TTS_API_KEY;
+    if (!googleTtsApiKey) return res.status(503).json({ error: 'GOOGLE_TTS_API_KEY is not configured' });
 
-    const gcpApiKey = process.env.GOOGLE_TTS_API_KEY || process.env.GEMINI_API_KEY;
+    // Google currently lists Urdu voices under ur-IN. Aoede is a female Chirp 3 HD voice.
+    const voiceConfig = language === 'en-US'
+      ? { languageCode: 'en-US', name: 'en-US-Neural2-F' }
+      : language === 'en-GB'
+        ? { languageCode: 'en-GB', name: 'en-GB-Neural2-C' }
+        : { languageCode: 'ur-IN', name: process.env.GOOGLE_TTS_URDU_VOICE || 'ur-IN-Chirp3-HD-Aoede' };
+    const numericSpeed = Number(speed);
+    const safeSpeed = Number.isFinite(numericSpeed) ? Math.min(Math.max(numericSpeed, 0.25), 2.0) : 1.0;
 
-    if (!gcpApiKey) {
-      return res.status(503).json({ error: 'TTS API key not configured' });
-    }
-
-    // Map language to Google TTS voice name
-    const voiceMap: Record<string, { languageCode: string; name: string; ssmlGender: string }> = {
-      'ur-PK': {
-        languageCode: 'ur-PK',
-        name: 'ur-PK-Standard-A', // Urdu Pakistan female voice
-        ssmlGender: 'FEMALE',
-      },
-      'en-US': {
-        languageCode: 'en-US',
-        name: 'en-US-Neural2-F',
-        ssmlGender: 'FEMALE',
-      },
-      'en-GB': {
-        languageCode: 'en-GB',
-        name: 'en-GB-Neural2-C',
-        ssmlGender: 'FEMALE',
-      },
-    };
-
-    const voiceConfig = voiceMap[language] || voiceMap['ur-PK'];
-
-    const ttsResponse = await fetch(
-      `https://texttospeech.googleapis.com/v1/text:synthesize?key=${gcpApiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          input: { text: text.slice(0, 5000) }, // Google TTS limit
-          voice: voiceConfig,
-          audioConfig: {
-            audioEncoding: 'MP3',
-            speakingRate: Math.min(Math.max(speed, 0.25), 4.0),
-            pitch: 0.0,
-            effectsProfileId: ['headphone-class-device'],
-          },
-        }),
-      }
-    );
-
+    const ttsResponse = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize?key=' + encodeURIComponent(googleTtsApiKey), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        input: { text: text.trim().slice(0, 5000) },
+        voice: voiceConfig,
+        audioConfig: { audioEncoding: 'MP3', speakingRate: safeSpeed, pitch: 0.0, effectsProfileId: ['headphone-class-device'] },
+      }),
+    });
     if (!ttsResponse.ok) {
-      const errText = await ttsResponse.text();
-      console.warn('Google TTS service response:', errText);
-      // Return 503 so frontend gracefully falls back to browser TTS
-      return res.status(503).json({ error: 'TTS service error' });
+      console.error('Google Cloud TTS error:', await ttsResponse.text());
+      return res.status(502).json({ error: 'Google Cloud TTS request failed' });
     }
-
     const ttsData = (await ttsResponse.json()) as { audioContent?: string };
-
-    if (!ttsData.audioContent) {
-      return res.status(503).json({ error: 'No audio content received' });
-    }
-
-    // Decode base64 audio and return as MP3
+    if (!ttsData.audioContent) return res.status(502).json({ error: 'Google Cloud TTS returned no audio' });
     const audioBuffer = Buffer.from(ttsData.audioContent, 'base64');
     res.set('Content-Type', 'audio/mpeg');
     res.set('Content-Length', String(audioBuffer.length));
-    res.set('Cache-Control', 'no-cache');
-    res.send(audioBuffer);
+    res.set('Cache-Control', 'no-store');
+    return res.send(audioBuffer);
   } catch (error: any) {
     console.error('TTS endpoint error:', error);
-    res.status(503).json({ error: error.message || 'TTS service unavailable' });
+    return res.status(502).json({ error: 'TTS service unavailable' });
   }
 });
 
