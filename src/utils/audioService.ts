@@ -194,12 +194,14 @@ class TtsController {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = options.speed || 1.0;
     utterance.pitch = 1.05;
-    utterance.lang = options.language || 'ur-PK';
+    // Browser fallback engines commonly expose Urdu as ur-IN rather than ur-PK.
+    utterance.lang = (options.language || 'ur-PK') === 'ur-PK' ? 'ur-IN' : (options.language || 'en-US');
 
     const voices = window.speechSynthesis.getVoices();
     // Try to find best Urdu or English voice
     const bestVoice =
-      voices.find((v) => v.lang.startsWith('ur')) ||
+      voices.find((v) => v.lang.toLowerCase().startsWith('ur-in')) ||
+      voices.find((v) => v.lang.toLowerCase().startsWith('ur')) ||
       voices.find((v) => v.lang.includes('en-GB')) ||
       voices.find((v) => v.lang.includes('en-US')) ||
       voices[0];
