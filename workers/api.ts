@@ -388,54 +388,48 @@ export default {
       return json(newSite);
     }
 
-    // Route: POST /api/tts — Urdu Realistic TTS (Google Cloud TTS)
+    // Route: POST /api/tts — Google Cloud Urdu female voice
     if (pathname === '/api/tts' && request.method === 'POST') {
-      const body = (await request.json()) as any;
+      const body = (await request.json()) as { text?: string; language?: string; speed?: number };
       const { text, language = 'ur-PK', speed = 1.0 } = body;
+      if (typeof text !== 'string' || !text.trim()) return json({ error: 'Text is required' }, 400);
 
-      if (!text) return json({ error: 'Text required' }, 400);
+      // Gemini credentials are not Google Cloud Text-to-Speech credentials.
+      const ttsKey = env.GOOGLE_TTS_API_KEY;
+      if (!ttsKey) return json({ error: 'GOOGLE_TTS_API_KEY is not configured' }, 503);
 
-      const ttsKey = env.GOOGLE_TTS_API_KEY || env.GEMINI_API_KEY;
-      if (!ttsKey) return json({ error: 'TTS not configured' }, 503);
-
-      const voiceMap: Record<string, { languageCode: string; name: string; ssmlGender: string }> = {
-        'ur-PK': { languageCode: 'ur-PK', name: 'ur-PK-Standard-A', ssmlGender: 'FEMALE' },
-        'en-US': { languageCode: 'en-US', name: 'en-US-Neural2-F', ssmlGender: 'FEMALE' },
-        'en-GB': { languageCode: 'en-GB', name: 'en-GB-Neural2-C', ssmlGender: 'FEMALE' },
-      };
-      const voice = voiceMap[language] || voiceMap['ur-PK'];
+      // Urdu voices are listed under ur-IN; Aoede is a female Chirp 3 HD voice.
+      const voice = language === 'en-US'
+        ? { languageCode: 'en-US', name: 'en-US-Neural2-F' }
+        : language === 'en-GB'
+          ? { languageCode: 'en-GB', name: 'en-GB-Neural2-C' }
+          : { languageCode: 'ur-IN', name: 'ur-IN-Chirp3-HD-Aoede' };
+      const numericSpeed = Number(speed);
+      const safeSpeed = Number.isFinite(numericSpeed) ? Math.min(Math.max(numericSpeed, 0.25), 2.0) : 1.0;
 
       try {
-        const ttsResponse = await fetch(
-          `https://texttospeech.googleapis.com/v1/text:synthesize?key=${ttsKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              input: { text: String(text).slice(0, 5000) },
-              voice,
-              audioConfig: {
-                audioEncoding: 'MP3',
-                speakingRate: Math.min(Math.max(Number(speed), 0.25), 4.0),
-                pitch: 0.0,
-                effectsProfileId: ['headphone-class-device'],
-              },
-            }),
-          }
-        );
-
-        if (!ttsResponse.ok) return json({ error: 'TTS API error' }, 503);
-
-        const data = (await ttsResponse.json()) as { audioContent: string };
+        const ttsResponse = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize?key=' + encodeURIComponent(ttsKey), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            input: { text: text.trim().slice(0, 5000) },
+            voice,
+            audioConfig: { audioEncoding: 'MP3', speakingRate: safeSpeed, pitch: 0.0, effectsProfileId: ['headphone-class-device'] },
+          }),
+        });
+        if (!ttsResponse.ok) {
+          console.error('Google Cloud TTS error:', await ttsResponse.text());
+          return json({ error: 'Google Cloud TTS request failed' }, 502);
+        }
+        const data = (await ttsResponse.json()) as { audioContent?: string };
+        if (!data.audioContent) return json({ error: 'Google Cloud TTS returned no audio' }, 502);
         const binaryStr = atob(data.audioContent);
         const bytes = new Uint8Array(binaryStr.length);
         for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-
-        return new Response(bytes.buffer, {
-          headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-cache', ...CORS_HEADERS },
-        });
-      } catch (err: any) {
-        return json({ error: err.message }, 503);
+        return new Response(bytes, { headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store', ...CORS_HEADERS } });
+      } catch (err) {
+        console.error('Worker TTS endpoint error:', err);
+        return json({ error: 'Google Cloud TTS unavailable' }, 502);
       }
     }
 
