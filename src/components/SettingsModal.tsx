@@ -131,7 +131,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <Sparkles className="w-4 h-4 text-cyan-400" />
                 <div>
                   <h4 className="text-xs font-bold text-white">Gemini High Thinking Mode</h4>
-                  <p className="text-[11px] text-cyan-400 font-mono">model: gemini-4-argon · ThinkingLevel.HIGH</p>
+                  <p className="text-[11px] text-cyan-400 font-mono">model: gemini-3.8-flash · ThinkingLevel.HIGH</p>
                 </div>
               </div>
               <input

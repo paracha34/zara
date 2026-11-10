@@ -60,7 +60,7 @@ export default function App() {
     language: 'ur-PK',
     userName: 'Tony Stark',
     thinkingMode: true,
-    modelName: 'gemini-4-argon',
+    modelName: 'gemini-3.8-flash',
   });
 
   const [isEmotionModalOpen, setIsEmotionModalOpen] = useState(false);

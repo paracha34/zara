@@ -111,7 +111,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.15)]'
               : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
           }`}
-          title="High Thinking Reasoning Engine (gemini-4-argon with ThinkingLevel.HIGH)"
+          title="High Thinking Reasoning Engine (gemini-3.8-flash with ThinkingLevel.HIGH)"
         >
           <Sparkles className={`w-3.5 h-3.5 ${thinkingMode ? 'text-cyan-400 animate-pulse' : ''}`} />
           <span className="hidden md:inline">High Thinking</span>

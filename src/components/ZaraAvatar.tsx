@@ -202,7 +202,7 @@ export const ZaraAvatar: React.FC<ZaraAvatarProps> = ({
           ) : isThinking ? (
             <span className="text-cyan-400 font-semibold flex items-center gap-1.5">
               <Cpu className="w-3.5 h-3.5 animate-spin" />
-              High Reasoning (gemini-4-argon) in progress...
+              High Reasoning (gemini-3.8-flash) in progress...
             </span>
           ) : isSpeaking ? (
             <span className="text-emerald-400 font-semibold flex items-center gap-1.5">

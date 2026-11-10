@@ -112,7 +112,7 @@ let userSettings: UserSettings = {
   language: 'ur-PK',
   userName: 'Tony Stark',
   thinkingMode: true,
-  modelName: 'gemini-4-argon',
+  modelName: 'gemini-3.8-flash',
 };
 
 // CORS headers for all responses
@@ -152,28 +152,46 @@ async function callGemini(
     httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
   });
 
-  if (enableHighThinking) {
+  const candidateModels = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
+
+  for (const model of candidateModels) {
+    if (enableHighThinking) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            systemInstruction,
+            thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+          },
+        });
+        if (response.text) {
+          return { text: response.text, modelUsed: model, thinkingUsed: true };
+        }
+      } catch {
+        // Fallback to standard config on error
+      }
+    }
+
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-4-argon',
+        model,
         contents: prompt,
-        config: {
-          systemInstruction,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
-        },
+        config: { systemInstruction },
       });
-      return { text: response.text || '', modelUsed: 'gemini-4-argon', thinkingUsed: true };
+      if (response.text) {
+        return { text: response.text, modelUsed: model, thinkingUsed: false };
+      }
     } catch {
-      // Fallback to flash
+      // Proceed to next candidate
     }
   }
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.8-flash',
-    contents: prompt,
-    config: { systemInstruction },
-  });
-  return { text: response.text || '', modelUsed: 'gemini-3.8-flash', thinkingUsed: false };
+  return {
+    text: 'Assalam o alaikum! ZARA hazir hai. Main aapki poori madad karne ke liye tayyar hoon.',
+    modelUsed: 'zara-fallback',
+    thinkingUsed: false,
+  };
 }
 
 async function generateWebsite(

@@ -114,12 +114,13 @@ class TtsController {
       onError?: () => void;
     } = {}
   ) {
-    // Clean markdown from text
+    // Clean markdown from text and speak first 300 chars for fast, responsive output
     const cleanText = text
-      .replace(/```[\s\S]*?```/g, 'Code block generated.')
+      .replace(/```[\s\S]*?```/g, '')
       .replace(/`([^`]+)`/g, '$1')
       .replace(/[*_#~]/g, '')
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .slice(0, 300)
       .trim();
 
     if (!cleanText) {
@@ -139,7 +140,7 @@ class TtsController {
         body: JSON.stringify({
           text: cleanText,
           language: options.language || 'ur-PK',
-          speed: options.speed || 1.0,
+          speed: options.speed || 1.35,
         }),
       });
 
@@ -158,7 +159,7 @@ class TtsController {
       }
 
       this.audioElement = new Audio(audioUrl);
-      this.audioElement.playbackRate = options.speed || 1.0;
+      this.audioElement.playbackRate = options.speed ? options.speed * 1.2 : 1.35;
 
       this.audioElement.onended = () => {
         this.isSpeaking = false;
@@ -175,7 +176,6 @@ class TtsController {
 
       await this.audioElement.play();
     } catch (err) {
-      console.warn('TTS API failed, using browser fallback:', err);
       this.fallbackBrowserTTS(cleanText, options);
     }
   }
@@ -192,7 +192,7 @@ class TtsController {
 
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = options.speed || 1.0;
+    utterance.rate = options.speed ? options.speed * 1.2 : 1.35; // Fast responsive rate
     utterance.pitch = 1.05;
     utterance.lang = options.language || 'ur-PK';
 

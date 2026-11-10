@@ -214,7 +214,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <div className="flex items-center gap-2 font-semibold text-xs mb-1">
                 <span>ZARA High Reasoning Engine</span>
                 <span className="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-500/30 font-mono text-[10px]">
-                  gemini-4-argon · ThinkingLevel.HIGH
+                  gemini-3.8-flash · ThinkingLevel.HIGH
                 </span>
               </div>
               <p className="text-xs text-slate-400">
