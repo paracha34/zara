@@ -231,6 +231,7 @@ export default function App() {
       (error) => {
         console.warn('Speech recognition error:', error);
         setIsListening(false);
+        alert(`Microphone ya speech recognition issue: ${error?.message || error?.error || 'Please check microphone permission and try again.'}`);
       }
     );
 
