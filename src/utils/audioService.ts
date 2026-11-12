@@ -210,18 +210,16 @@ export function createSpeechRecognizer(
 ) {
   if (typeof window === 'undefined') return null;
 
-  const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  const SpeechRec = language === 'ur-PK' ? null : ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
   if (!SpeechRec) {
     // Fallback: record microphone audio and transcribe it with Cloudflare Workers AI Whisper.
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') return null;
     let recorder: MediaRecorder | null = null;
     let stream: MediaStream | null = null;
     let chunks: BlobPart[] = [];
-    let stoppedByUser = false;
     return {
       start: async () => {
         try {
-          stoppedByUser = false;
           stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           recorder = new MediaRecorder(stream);
           chunks = [];
@@ -231,7 +229,7 @@ export function createSpeechRecognizer(
           recorder.onerror = (event: Event) => onError(event);
           recorder.onstop = async () => {
             try {
-              if (!stoppedByUser && chunks.length) {
+              if (chunks.length) {
                 const blob = new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' });
                 const bytes = new Uint8Array(await blob.arrayBuffer());
                 let binary = '';
@@ -265,7 +263,6 @@ export function createSpeechRecognizer(
         }
       },
       stop: () => {
-        stoppedByUser = false;
         if (recorder && recorder.state !== 'inactive') recorder.stop();
         else {
           stream?.getTracks().forEach((track) => track.stop());
