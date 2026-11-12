@@ -37,6 +37,6 @@ export interface UserSettings {
   ttsSpeed: number; // 0.8 - 1.5
   language: 'ur-PK' | 'en-US';
   userName: string;
-  thinkingMode: boolean; // enables gemini-3.8-flash with ThinkingLevel.HIGH
+  thinkingMode: boolean; // enables higher reasoning effort when supported by the selected Workers AI model
   modelName: string;
 }
