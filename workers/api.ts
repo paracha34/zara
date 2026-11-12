@@ -14,7 +14,7 @@ import { GeneratedWebsite, ReminderItem, UserSettings } from '../src/types/assis
 export interface Env {
   AI: { run(model: string, input: Record<string, unknown>): Promise<any> };
   // KV namespace for persistent storage (optional, configured in Cloudflare dashboard)
-  ZARA_KV?: any;
+  ZARA_KV?: any;\n  GOOGLE_TTS_API_KEY?: string;
 }
 
 // In-memory stores (with showcase data)
@@ -404,13 +404,57 @@ export default {
       }
     }
 
-    // Route: POST /api/tts — Urdu TTS uses browser-native speech synthesis.
+    // Route: POST /api/tts — premium Urdu female voice via Google Cloud Text-to-Speech.
     if (pathname === '/api/tts' && request.method === 'POST') {
-      return json({
-        available: false,
-        fallback: 'browser-speech-synthesis',
-        message: 'Workers AI does not currently provide a supported Urdu Pakistan voice. Use an Urdu voice installed in the browser or operating system.',
-      }, 501);
+      try {
+        const body = (await request.json()) as { text?: string; language?: string; speed?: number };
+        const text = String(body.text || '').trim();
+        if (!text) return json({ error: 'Text is required' }, 400);
+        if (text.length > 5000) return json({ error: 'Text is too long (max 5000 characters)' }, 413);
+        if (!env.GOOGLE_TTS_API_KEY) {
+          return json({ error: 'Google Cloud TTS is not configured. Add GOOGLE_TTS_API_KEY as a Cloudflare Pages secret.' }, 503);
+        }
+
+        // Google currently publishes premium Urdu voices under ur-IN (not ur-PK).
+        // Aoede is a natural female Chirp3-HD voice.
+        const isUrdu = !body.language || body.language.toLowerCase().startsWith('ur');
+        const languageCode = isUrdu ? 'ur-IN' : (body.language === 'en-GB' ? 'en-GB' : 'en-US');
+        const voiceName = isUrdu
+          ? 'ur-IN-Chirp3-HD-Aoede'
+          : languageCode === 'en-GB' ? 'en-GB-Neural2-C' : 'en-US-Neural2-F';
+        const speed = Math.min(1.25, Math.max(0.75, Number(body.speed) || 1));
+
+        const ttsResponse = await fetch(
+          `https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(env.GOOGLE_TTS_API_KEY)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              input: { text },
+              voice: { languageCode, name: voiceName, ssmlGender: 'FEMALE' },
+              audioConfig: { audioEncoding: 'MP3', speakingRate: speed, pitch: 0, effectsProfileId: ['headphone-class-device'] },
+            }),
+          }
+        );
+
+        if (!ttsResponse.ok) {
+          const detail = await ttsResponse.text();
+          console.error('Google Cloud TTS error:', ttsResponse.status, detail.slice(0, 500));
+          return json({ error: 'Google Cloud TTS request failed. Check API key, billing, and Text-to-Speech API access.' }, 502);
+        }
+
+        const data = (await ttsResponse.json()) as { audioContent?: string };
+        if (!data.audioContent) return json({ error: 'Google Cloud TTS returned no audio.' }, 502);
+        const binary = atob(data.audioContent);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return new Response(bytes, {
+          headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store', ...CORS_HEADERS },
+        });
+      } catch (error) {
+        console.error('Google Cloud TTS handler failed:', error);
+        return json({ error: 'Unable to synthesize speech right now.' }, 502);
+      }
     }
 
     // Route: GET /api/websites
