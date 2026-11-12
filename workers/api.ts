@@ -233,6 +233,8 @@ export default {
         assistant: 'ZARA',
         bilingual: true,
         aiBindingConfigured: !!env.AI,
+        ttsConfigured: !!env.GOOGLE_TTS_API_KEY,
+        ttsProvider: env.GOOGLE_TTS_API_KEY ? 'google-cloud-tts' : 'browser-fallback',
         model: CHAT_MODEL,
         runtime: 'cloudflare-worker',
       });
@@ -433,7 +435,10 @@ export default {
             body: JSON.stringify({
               input: { text },
               voice: { languageCode, name: voiceName, ssmlGender: 'FEMALE' },
-              audioConfig: { audioEncoding: 'MP3', speakingRate: speed, pitch: 0, effectsProfileId: ['headphone-class-device'] },
+              // Chirp 3 HD does not accept speakingRate or pitch controls.
+              audioConfig: isUrdu
+                ? { audioEncoding: 'MP3' }
+                : { audioEncoding: 'MP3', speakingRate: speed, pitch: 0 },
             }),
           }
         );
