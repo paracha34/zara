@@ -11,6 +11,7 @@ import { WebsiteBuilderView } from './components/WebsiteBuilderView.tsx';
 import { RemindersView } from './components/RemindersView.tsx';
 import { EmotionSelectorModal } from './components/EmotionSelectorModal.tsx';
 import { SettingsModal } from './components/SettingsModal.tsx';
+import { CameraPreview } from './components/CameraPreview.tsx';
 import { EmotionType, EMOTIONS } from './utils/assistantLogic.ts';
 import { ChatMessage, GeneratedWebsite, ReminderItem, UserSettings } from './types/assistant.ts';
 import {
@@ -60,11 +61,12 @@ export default function App() {
     language: 'ur-PK',
     userName: 'Tony Stark',
     thinkingMode: true,
-    modelName: 'gemini-3.8-flash',
+    modelName: '@cf/zai-org/glm-4.7-flash',
   });
 
   const [isEmotionModalOpen, setIsEmotionModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   const recognizerRef = useRef<any>(null);
 
@@ -206,7 +208,7 @@ export default function App() {
   };
 
   // Toggle Voice Input Recognition (STT)
-  const handleToggleMic = () => {
+  const handleToggleMic = async () => {
     if (isListening) {
       recognizerRef.current?.stop();
       setIsListening(false);
@@ -231,17 +233,19 @@ export default function App() {
       (error) => {
         console.warn('Speech recognition error:', error);
         setIsListening(false);
+        alert(`Microphone ya speech recognition issue: ${error?.message || error?.error || 'Please check microphone permission and try again.'}`);
       }
     );
 
     if (recognizer) {
       recognizerRef.current = recognizer;
       try {
-        recognizer.start();
         setIsListening(true);
-      } catch (e) {
+        await Promise.resolve(recognizer.start());
+      } catch (e: any) {
         console.warn('Error starting speech recognizer:', e);
         setIsListening(false);
+        alert(`Microphone access nahi mil saka: ${e?.message || 'Browser settings mein microphone allow karein.'}`);
       }
     } else {
       alert('Speech recognition is not supported in this browser. You can type commands in the chat bar below.');
@@ -373,6 +377,7 @@ export default function App() {
         onEmotionClick={() => setIsEmotionModalOpen(true)}
         isListening={isListening}
         onMicToggle={handleToggleMic}
+        onCameraClick={() => setIsCameraOpen(true)}
         ttsEnabled={settings.ttsEnabled}
         onToggleTts={() => {
           const next = !settings.ttsEnabled;
@@ -451,6 +456,8 @@ export default function App() {
         onSelectEmotion={handleSelectEmotion}
         onTestVoice={handleTestEmotionVoice}
       />
+
+      <CameraPreview isOpen={isCameraOpen} onClose={() => setIsCameraOpen(false)} />
 
       <SettingsModal
         isOpen={isSettingsModalOpen}

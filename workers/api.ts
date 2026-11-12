@@ -3,7 +3,6 @@
  * Handles all /api/* routes for Cloudflare Pages & Workers deployment
  */
 
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import {
   detectIntent,
   buildZaraSystemInstruction,
@@ -13,14 +12,14 @@ import {
 import { GeneratedWebsite, ReminderItem, UserSettings } from '../src/types/assistant.ts';
 
 export interface Env {
-  GEMINI_API_KEY: string;
-  GOOGLE_TTS_API_KEY?: string;
+  AI: { run(model: string, input: Record<string, unknown>): Promise<any> };
   // KV namespace for persistent storage (optional, configured in Cloudflare dashboard)
   ZARA_KV?: any;
+  GOOGLE_TTS_API_KEY?: string;
 }
 
 // In-memory stores (with showcase data)
-const storedWebsites: GeneratedWebsite[] = [
+const defaultWebsites: GeneratedWebsite[] = [
   {
     id: 'site-iron-man-hud',
     title: 'Stark Industries Arc Command Hub',
@@ -86,7 +85,7 @@ const storedWebsites: GeneratedWebsite[] = [
   },
 ];
 
-const storedReminders: ReminderItem[] = [
+const defaultReminders: ReminderItem[] = [
   {
     id: 'rem-1',
     task: 'Review Stark Industries AI architecture and Jarvis telemetry',
@@ -105,14 +104,14 @@ const storedReminders: ReminderItem[] = [
   },
 ];
 
-let userSettings: UserSettings = {
+const defaultUserSettings: UserSettings = {
   defaultEmotion: 'Friendly',
   ttsEnabled: true,
   ttsSpeed: 1.0,
   language: 'ur-PK',
   userName: 'Tony Stark',
   thinkingMode: true,
-  modelName: 'gemini-3.8-flash',
+  modelName: '@cf/zai-org/glm-4.7-flash',
 };
 
 // CORS headers for all responses
@@ -133,65 +132,54 @@ function corsPreflight(): Response {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
-async function callGemini(
+async function readCollection<T>(env: Env, key: string, fallback: T): Promise<T> {
+  if (!env.ZARA_KV) return fallback;
+  const value = await env.ZARA_KV.get(key, 'json');
+  if (value !== null && value !== undefined) return value as T;
+  await env.ZARA_KV.put(key, JSON.stringify(fallback));
+  return fallback;
+}
+
+async function writeCollection<T>(env: Env, key: string, value: T): Promise<void> {
+  if (env.ZARA_KV) await env.ZARA_KV.put(key, JSON.stringify(value));
+}
+
+const CHAT_MODEL = '@cf/zai-org/glm-4.7-flash';
+
+async function callWorkersAI(
   env: Env,
   prompt: string,
   systemInstruction: string,
   enableHighThinking: boolean
 ): Promise<{ text: string; modelUsed: string; thinkingUsed: boolean }> {
-  if (!env.GEMINI_API_KEY) {
-    return {
-      text: 'Assalam o alaikum! ZARA hazir hai. GEMINI_API_KEY configure karein Cloudflare dashboard mein.',
-      modelUsed: 'offline',
-      thinkingUsed: false,
-    };
+  if (!env.AI || typeof env.AI.run !== 'function') {
+    throw new Error('Cloudflare Workers AI binding "AI" is missing. Configure it in the Pages project.');
   }
 
-  const ai = new GoogleGenAI({
-    apiKey: env.GEMINI_API_KEY,
-    httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+  const result = await env.AI.run(CHAT_MODEL, {
+    messages: [
+      { role: 'system', content: systemInstruction },
+      { role: 'user', content: prompt },
+    ],
+    max_tokens: 1800,
+    temperature: 0.7,
+    ...(enableHighThinking ? { reasoning_effort: 'high' } : {}),
   });
 
-  const candidateModels = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
+  const choiceText = result?.choices?.[0]?.message?.content;
+  const text = typeof result?.response === 'string'
+    ? result.response
+    : typeof choiceText === 'string'
+      ? choiceText
+      : Array.isArray(choiceText)
+        ? choiceText.map((part: any) => part?.text || '').join('')
+        : '';
 
-  for (const model of candidateModels) {
-    if (enableHighThinking) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            systemInstruction,
-            thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
-          },
-        });
-        if (response.text) {
-          return { text: response.text, modelUsed: model, thinkingUsed: true };
-        }
-      } catch {
-        // Fallback to standard config on error
-      }
-    }
-
-    try {
-      const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: { systemInstruction },
-      });
-      if (response.text) {
-        return { text: response.text, modelUsed: model, thinkingUsed: false };
-      }
-    } catch {
-      // Proceed to next candidate
-    }
+  if (!text.trim()) {
+    throw new Error('Workers AI returned an empty response.');
   }
 
-  return {
-    text: 'Assalam o alaikum! ZARA hazir hai. Main aapki poori madad karne ke liye tayyar hoon.',
-    modelUsed: 'zara-fallback',
-    thinkingUsed: false,
-  };
+  return { text: text.trim(), modelUsed: CHAT_MODEL, thinkingUsed: !!enableHighThinking };
 }
 
 async function generateWebsite(
@@ -213,44 +201,27 @@ Return ONLY a valid JSON object matching this schema:
   "html": "<!DOCTYPE html><html>...</html>"
 }`;
 
-  try {
-    const result = await callGemini(env, prompt, systemInstruction, true);
-    const cleanText = result.text.trim().replace(/^```json/i, '').replace(/^```/i, '').replace(/```$/i, '').trim();
-    const parsed = JSON.parse(cleanText);
-    return {
-      title: parsed.title || topic,
-      description: parsed.description || `Website generated for ${topic}`,
-      html: parsed.html || '<!DOCTYPE html><html><body><h1>Error generating HTML</h1></body></html>',
-    };
-  } catch {
-    return {
-      title: `${topic} Site`,
-      description: `Interactive web app for ${topic}`,
-      html: `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${topic}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center p-6">
-  <div class="max-w-xl w-full bg-slate-900 border border-cyan-500/30 rounded-2xl p-8 text-center shadow-2xl">
-    <div class="w-16 h-16 bg-cyan-500/20 text-cyan-400 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">⚡</div>
-    <h1 class="text-2xl font-bold mb-2">${topic}</h1>
-    <p class="text-slate-400 mb-6">Generated by ZARA AI Assistant on Cloudflare Workers.</p>
-    <button onclick="alert('Welcome to ${topic}!')" class="px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-lg transition">Explore Project</button>
-  </div>
-</body>
-</html>`,
-    };
+  const result = await callWorkersAI(env, prompt, systemInstruction, true);
+  const cleanText = result.text.trim().replace(/^```json/i, '').replace(/^```/i, '').replace(/```$/i, '').trim();
+  const parsed = JSON.parse(cleanText);
+  if (typeof parsed.html !== 'string' || !parsed.html.toLowerCase().includes('<html')) {
+    throw new Error('AI did not return valid standalone HTML.');
   }
+  return {
+    title: typeof parsed.title === 'string' ? parsed.title : topic,
+    description: typeof parsed.description === 'string' ? parsed.description : `Website generated for ${topic}`,
+    html: parsed.html,
+  };
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const { pathname } = url;
+
+    const storedWebsites = await readCollection<GeneratedWebsite[]>(env, 'websites', defaultWebsites);
+    const storedReminders = await readCollection<ReminderItem[]>(env, 'reminders', defaultReminders);
+    let userSettings = await readCollection<UserSettings>(env, 'settings', defaultUserSettings);
 
     // Handle CORS preflight
     if (request.method === 'OPTIONS') return corsPreflight();
@@ -261,7 +232,10 @@ export default {
         status: 'ok',
         assistant: 'ZARA',
         bilingual: true,
-        apiKeyConfigured: !!env.GEMINI_API_KEY,
+        aiBindingConfigured: !!env.AI,
+        ttsConfigured: !!env.GOOGLE_TTS_API_KEY,
+        ttsProvider: env.GOOGLE_TTS_API_KEY ? 'google-cloud-tts' : 'browser-fallback',
+        model: CHAT_MODEL,
         runtime: 'cloudflare-worker',
       });
     }
@@ -294,6 +268,7 @@ export default {
       if (parsedIntent.type === 'CHANGE_EMOTION') {
         const newEmotion = parsedIntent.emotionTarget || 'Friendly';
         userSettings.defaultEmotion = newEmotion;
+        await writeCollection(env, 'settings', userSettings);
         const meta = EMOTIONS[newEmotion];
         return json({
           reply: `Emotion switched to **${meta.nameEn}** (${meta.nameRomanUrdu} / ${meta.nameUrdu})!\n\n${meta.tagline}`,
@@ -306,7 +281,13 @@ export default {
 
       if (parsedIntent.type === 'WEBSITE_BUILD') {
         const topic = parsedIntent.websiteTopic || 'Modern Showcase';
-        const webResult = await generateWebsite(env, topic, currentEmotion);
+        let webResult: { title: string; description: string; html: string };
+        try {
+          webResult = await generateWebsite(env, topic, currentEmotion);
+        } catch (error) {
+          console.error('Website generation failed:', error);
+          return json({ error: 'Website generation failed. Check Workers AI availability and try again.' }, 503);
+        }
 
         const newSite: GeneratedWebsite = {
           id: `site-${Date.now()}`,
@@ -318,6 +299,7 @@ export default {
           updatedAt: new Date().toISOString(),
         };
         storedWebsites.unshift(newSite);
+        await writeCollection(env, 'websites', storedWebsites);
 
         return json({
           reply: `Website successfully ban gayi hai! 🚀\n\n**Title:** ${webResult.title}\n**Description:** ${webResult.description}\n\nAap "Website Studio" tab mein iska live interactive preview dekh sakte hain!`,
@@ -340,6 +322,7 @@ export default {
           priority: 'normal',
         };
         storedReminders.unshift(reminder);
+        await writeCollection(env, 'reminders', storedReminders);
         return json({
           reply: `Reminder set kar diya! ⏰\n📌 **Task:** ${reminder.task}\n⏱️ **${delayMins} minute(s) baad**`,
           intent: 'REMINDER',
@@ -358,7 +341,13 @@ export default {
             `\n${userName}: ${message}\nZARA:`
           : `${userName}: ${message}\nZARA:`;
 
-      const aiResult = await callGemini(env, contextPrompt, systemInstruction, !!thinkingMode);
+      let aiResult: { text: string; modelUsed: string; thinkingUsed: boolean };
+      try {
+        aiResult = await callWorkersAI(env, contextPrompt, systemInstruction, !!thinkingMode);
+      } catch (error) {
+        console.error('Workers AI chat failed:', error);
+        return json({ error: 'ZARA AI is temporarily unavailable. Check Workers AI binding, model availability, or daily usage limits.' }, 503);
+      }
       return json({
         reply: aiResult.text,
         intent: 'CHAT',
@@ -373,7 +362,13 @@ export default {
       const body = (await request.json()) as any;
       const { prompt, topic, emotion = userSettings.defaultEmotion } = body;
       const siteTopic = topic || prompt || 'Modern Interactive Application';
-      const result = await generateWebsite(env, siteTopic, emotion);
+      let result: { title: string; description: string; html: string };
+      try {
+        result = await generateWebsite(env, siteTopic, emotion);
+      } catch (error) {
+        console.error('Website generation failed:', error);
+        return json({ error: 'Website generation failed. Check Workers AI availability and try again.' }, 503);
+      }
 
       const newSite: GeneratedWebsite = {
         id: `site-${Date.now()}`,
@@ -385,57 +380,86 @@ export default {
         updatedAt: new Date().toISOString(),
       };
       storedWebsites.unshift(newSite);
+      await writeCollection(env, 'websites', storedWebsites);
       return json(newSite);
     }
 
-    // Route: POST /api/tts — Urdu Realistic TTS (Google Cloud TTS)
-    if (pathname === '/api/tts' && request.method === 'POST') {
-      const body = (await request.json()) as any;
-      const { text, language = 'ur-PK', speed = 1.0 } = body;
-
-      if (!text) return json({ error: 'Text required' }, 400);
-
-      const ttsKey = env.GOOGLE_TTS_API_KEY || env.GEMINI_API_KEY;
-      if (!ttsKey) return json({ error: 'TTS not configured' }, 503);
-
-      const voiceMap: Record<string, { languageCode: string; name: string; ssmlGender: string }> = {
-        'ur-PK': { languageCode: 'ur-PK', name: 'ur-PK-Standard-A', ssmlGender: 'FEMALE' },
-        'en-US': { languageCode: 'en-US', name: 'en-US-Neural2-F', ssmlGender: 'FEMALE' },
-        'en-GB': { languageCode: 'en-GB', name: 'en-GB-Neural2-C', ssmlGender: 'FEMALE' },
-      };
-      const voice = voiceMap[language] || voiceMap['ur-PK'];
-
+    // Route: POST /api/stt — audio transcription with Cloudflare Workers AI Whisper
+    if (pathname === '/api/stt' && request.method === 'POST') {
       try {
+        const body = (await request.json()) as { audio?: string; language?: string };
+        const audio = body.audio;
+        if (!audio || typeof audio !== 'string') return json({ error: 'Base64 audio is required' }, 400);
+        if (audio.length > 12_000_000) return json({ error: 'Audio file is too large (max about 8 MB)' }, 413);
+        if (!env.AI) return json({ error: 'Workers AI binding is not configured' }, 503);
+
+        const result = await env.AI.run('@cf/openai/whisper-large-v3-turbo', {
+          audio,
+          task: 'transcribe',
+          ...(body.language ? { language: body.language } : {}),
+        });
+        const transcript = typeof result?.text === 'string' ? result.text.trim() : '';
+        if (!transcript) return json({ error: 'No speech detected' }, 422);
+        return json({ text: transcript, modelUsed: '@cf/openai/whisper-large-v3-turbo' });
+      } catch (error) {
+        console.error('Workers AI STT error:', error);
+        return json({ error: 'Speech transcription failed. Please try again.' }, 502);
+      }
+    }
+
+    // Route: POST /api/tts — premium Urdu female voice via Google Cloud Text-to-Speech.
+    if (pathname === '/api/tts' && request.method === 'POST') {
+      try {
+        const body = (await request.json()) as { text?: string; language?: string; speed?: number };
+        const text = String(body.text || '').trim();
+        if (!text) return json({ error: 'Text is required' }, 400);
+        if (text.length > 5000) return json({ error: 'Text is too long (max 5000 characters)' }, 413);
+        if (!env.GOOGLE_TTS_API_KEY) {
+          return json({ error: 'Google Cloud TTS is not configured. Add GOOGLE_TTS_API_KEY as a Cloudflare Pages secret.' }, 503);
+        }
+
+        // Google currently publishes premium Urdu voices under ur-IN (not ur-PK).
+        // Aoede is a natural female Chirp3-HD voice.
+        const isUrdu = !body.language || body.language.toLowerCase().startsWith('ur');
+        const languageCode = isUrdu ? 'ur-IN' : (body.language === 'en-GB' ? 'en-GB' : 'en-US');
+        const voiceName = isUrdu
+          ? 'ur-IN-Chirp3-HD-Aoede'
+          : languageCode === 'en-GB' ? 'en-GB-Neural2-C' : 'en-US-Neural2-F';
+        const speed = Math.min(1.25, Math.max(0.75, Number(body.speed) || 1));
+
         const ttsResponse = await fetch(
-          `https://texttospeech.googleapis.com/v1/text:synthesize?key=${ttsKey}`,
+          `https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(env.GOOGLE_TTS_API_KEY)}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              input: { text: String(text).slice(0, 5000) },
-              voice,
-              audioConfig: {
-                audioEncoding: 'MP3',
-                speakingRate: Math.min(Math.max(Number(speed), 0.25), 4.0),
-                pitch: 0.0,
-                effectsProfileId: ['headphone-class-device'],
-              },
+              input: { text },
+              voice: { languageCode, name: voiceName, ssmlGender: 'FEMALE' },
+              // Chirp 3 HD does not accept speakingRate or pitch controls.
+              audioConfig: isUrdu
+                ? { audioEncoding: 'MP3' }
+                : { audioEncoding: 'MP3', speakingRate: speed, pitch: 0 },
             }),
           }
         );
 
-        if (!ttsResponse.ok) return json({ error: 'TTS API error' }, 503);
+        if (!ttsResponse.ok) {
+          const detail = await ttsResponse.text();
+          console.error('Google Cloud TTS error:', ttsResponse.status, detail.slice(0, 500));
+          return json({ error: 'Google Cloud TTS request failed. Check API key, billing, and Text-to-Speech API access.' }, 502);
+        }
 
-        const data = (await ttsResponse.json()) as { audioContent: string };
-        const binaryStr = atob(data.audioContent);
-        const bytes = new Uint8Array(binaryStr.length);
-        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-
-        return new Response(bytes.buffer, {
-          headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-cache', ...CORS_HEADERS },
+        const data = (await ttsResponse.json()) as { audioContent?: string };
+        if (!data.audioContent) return json({ error: 'Google Cloud TTS returned no audio.' }, 502);
+        const binary = atob(data.audioContent);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return new Response(bytes, {
+          headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store', ...CORS_HEADERS },
         });
-      } catch (err: any) {
-        return json({ error: err.message }, 503);
+      } catch (error) {
+        console.error('Google Cloud TTS handler failed:', error);
+        return json({ error: 'Unable to synthesize speech right now.' }, 502);
       }
     }
 
@@ -459,6 +483,7 @@ export default {
           html,
           updatedAt: new Date().toISOString(),
         };
+        await writeCollection(env, 'websites', storedWebsites);
         return json(storedWebsites[existingIdx]);
       } else {
         const newSite: GeneratedWebsite = {
@@ -471,6 +496,7 @@ export default {
           updatedAt: new Date().toISOString(),
         };
         storedWebsites.unshift(newSite);
+        await writeCollection(env, 'websites', storedWebsites);
         return json(newSite);
       }
     }
@@ -492,6 +518,7 @@ export default {
           priority,
         };
         storedReminders.unshift(reminder);
+        await writeCollection(env, 'reminders', storedReminders);
         return json(reminder);
       }
     }
@@ -505,11 +532,13 @@ export default {
         if (!item) return json({ error: 'Not found' }, 404);
         if (body.status) item.status = body.status;
         if (body.dueTime) item.dueTime = Number(body.dueTime);
+        await writeCollection(env, 'reminders', storedReminders);
         return json(item);
       }
       if (request.method === 'DELETE') {
         const idx = storedReminders.findIndex((r) => r.id === id);
         if (idx >= 0) storedReminders.splice(idx, 1);
+        await writeCollection(env, 'reminders', storedReminders);
         return json({ success: true });
       }
     }
@@ -520,6 +549,7 @@ export default {
       if (request.method === 'POST') {
         const body = (await request.json()) as any;
         userSettings = { ...userSettings, ...body };
+        await writeCollection(env, 'settings', userSettings);
         return json(userSettings);
       }
     }
