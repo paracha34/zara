@@ -45,7 +45,7 @@ Install dependencies with `npm install`, then run `npm run dev`. This builds the
 - `POST /api/chat`
 - `POST /api/generate-website`
 - `POST /api/stt`
-- `POST /api/tts` (returns a documented browser-fallback response)
+- `POST /api/tts` (Google Cloud premium Urdu female MP3; browser fallback if unavailable)
 - `GET/POST /api/websites`
 - `GET/POST /api/reminders`
 - `GET/POST /api/settings`
@@ -53,3 +53,4 @@ Install dependencies with `npm install`, then run `npm run dev`. This builds the
 ## Persistent storage
 
 A Cloudflare KV namespace named `ZARA_DATA` has been provisioned in the connected Cloudflare account and bound as `ZARA_KV`. Generated websites, reminders, and settings are read from and written to this namespace. Chat history remains in browser localStorage on the current device.
+\n\n## Google Cloud TTS secret setup\n\nIn Cloudflare Dashboard, open Workers & Pages → `zara` → Settings → Variables and Secrets. Add `GOOGLE_TTS_API_KEY` as an encrypted secret for the Preview environment first, then Production after testing. Do not add the key to GitHub, `.env` committed files, or frontend settings.\n
