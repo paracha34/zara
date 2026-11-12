@@ -273,6 +273,9 @@ export function createSpeechRecognizer(
     let recorder: MediaRecorder | null = null;
     let stream: MediaStream | null = null;
     let chunks: BlobPart[] = [];
+    let silenceTimer: number | null = null;
+    let maxDurationTimer: number | null = null;
+    let monitorContext: AudioContext | null = null;
     return {
       start: async () => {
         try {
@@ -287,6 +290,11 @@ export function createSpeechRecognizer(
           };
           recorder.onerror = (event: Event) => onError(event);
           recorder.onstop = async () => {
+            if (silenceTimer !== null) window.clearInterval(silenceTimer);
+            if (maxDurationTimer !== null) window.clearTimeout(maxDurationTimer);
+            silenceTimer = null;
+            maxDurationTimer = null;
+            if (monitorContext) { void monitorContext.close().catch(() => {}); monitorContext = null; }
             try {
               if (chunks.length) {
                 const blob = new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' });
@@ -314,6 +322,45 @@ export function createSpeechRecognizer(
             }
           };
           recorder.start(250);
+
+          // Auto-finish after speech ends so the user does not need to tap the mic twice.
+          try {
+            const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+            if (AudioContextCtor) {
+              monitorContext = new AudioContextCtor();
+              const source = monitorContext.createMediaStreamSource(stream);
+              const analyser = monitorContext.createAnalyser();
+              analyser.fftSize = 1024;
+              source.connect(analyser);
+              const samples = new Uint8Array(analyser.fftSize);
+              const startedAt = Date.now();
+              let lastVoiceAt = startedAt;
+              let speechDetected = false;
+              silenceTimer = window.setInterval(() => {
+                if (!recorder || recorder.state === 'inactive') return;
+                analyser.getByteTimeDomainData(samples);
+                let sum = 0;
+                for (let i = 0; i < samples.length; i++) {
+                  const normalized = (samples[i] - 128) / 128;
+                  sum += normalized * normalized;
+                }
+                const rms = Math.sqrt(sum / samples.length);
+                if (rms > 0.025) {
+                  speechDetected = true;
+                  lastVoiceAt = Date.now();
+                }
+                const elapsed = Date.now() - startedAt;
+                if ((speechDetected && Date.now() - lastVoiceAt > 1900) || elapsed > 20000 || (!speechDetected && elapsed > 10000)) {
+                  if (recorder.state !== 'inactive') recorder.stop();
+                }
+              }, 250);
+            }
+          } catch (monitorError) {
+            console.warn('Voice activity monitor unavailable; manual stop remains enabled.', monitorError);
+          }
+          maxDurationTimer = window.setTimeout(() => {
+            if (recorder && recorder.state !== 'inactive') recorder.stop();
+          }, 20000);
         } catch (error) {
           stream?.getTracks().forEach((track) => track.stop());
           stream = null;
@@ -322,6 +369,8 @@ export function createSpeechRecognizer(
         }
       },
       stop: () => {
+        if (silenceTimer !== null) window.clearInterval(silenceTimer);
+        if (maxDurationTimer !== null) window.clearTimeout(maxDurationTimer);
         if (recorder && recorder.state !== 'inactive') recorder.stop();
         else {
           stream?.getTracks().forEach((track) => track.stop());
