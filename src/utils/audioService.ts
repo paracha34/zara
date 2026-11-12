@@ -114,10 +114,10 @@ class TtsController {
     } = {}
   ) {
     const cleanText = text
-      .replace(/```[\\s\\S]*?```/g, '')
+      .replace(/```[\s\S]*?```/g, '')
       .replace(/`([^`]+)`/g, '$1')
       .replace(/[*_#~]/g, '')
-      .replace(/\\[([^\\]]+)\\]\\([^)]+\\)/g, '$1')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
       .trim();
 
     if (!cleanText) {
