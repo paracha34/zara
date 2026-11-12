@@ -5,10 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "npm run build && wrangler pages dev dist",
-    "dev:cf": "concurrently \"tsx server.ts\" \"vite\"",
-    "dev:server": "tsx server.ts",
     "dev:frontend": "vite",
-    "start": "tsx server.ts",
     "build": "vite build",
     "deploy:pages": "npm run build && wrangler pages deploy dist",
     "deploy": "npm run deploy:pages",
