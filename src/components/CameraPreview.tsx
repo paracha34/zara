@@ -11,6 +11,7 @@ export const CameraPreview: React.FC<CameraPreviewProps> = ({ isOpen, onClose })
   const streamRef = useRef<MediaStream | null>(null);
   const [status, setStatus] = useState<'starting' | 'ready' | 'error'>('starting');
   const [error, setError] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -70,7 +71,7 @@ export const CameraPreview: React.FC<CameraPreviewProps> = ({ isOpen, onClose })
       streamRef.current = null;
       if (videoRef.current) videoRef.current.srcObject = null;
     };
-  }, [isOpen]);
+  }, [isOpen, retryCount]);
 
   if (!isOpen) return null;
 
@@ -97,7 +98,7 @@ export const CameraPreview: React.FC<CameraPreviewProps> = ({ isOpen, onClose })
         </div>
 
         <div className="p-4">
-          <div className="aspect-video overflow-hidden rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center">
+          <div className="relative aspect-video overflow-hidden rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center">
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             {status !== 'ready' && (
               <div className="absolute px-6 text-center max-w-lg">
@@ -112,7 +113,7 @@ export const CameraPreview: React.FC<CameraPreviewProps> = ({ isOpen, onClose })
           <div className="mt-3 flex items-center justify-between gap-3">
             <p className="text-xs text-slate-400">Live preview only. ZARA does not record or upload camera video.</p>
             {status === 'error' && (
-              <button onClick={() => { setStatus('starting'); setError(''); onClose(); window.setTimeout(() => window.dispatchEvent(new Event('zara-camera-retry')), 0); }} className="text-xs px-3 py-2 rounded-lg bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+              <button onClick={() => setRetryCount((value) => value + 1)} className="text-xs px-3 py-2 rounded-lg bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
                 Close and retry
               </button>
             )}
