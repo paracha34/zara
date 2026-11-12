@@ -284,7 +284,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
         <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 px-1">
           <div className="flex items-center gap-3">
-            <span>Voice input: Urdu & English Web Speech</span>
+            <span>Voice input: Urdu Whisper + English speech recognition · auto-stop after speaking</span>
             <span>·</span>
             <span>Commands: /quit, /emotion &lt;name&gt;</span>
           </div>
