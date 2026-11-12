@@ -193,15 +193,22 @@ class TtsController {
 
       const language = options.language || 'ur-PK';
       const isUrdu = language.toLowerCase().startsWith('ur');
+      // Browser SpeechSynthesis exposes no reliable voice-gender property.
+      // Only choose voices with a known feminine name; never silently fall back to a male Urdu voice.
+      const femaleName = /female|woman|zira|sara|samantha|victoria|karen|aria|jenny|asha|asma|aoede|neural2-f|chirp3-hd-f/i;
       const voice = isUrdu
-        ? voices.find((v) => v.lang.toLowerCase() === 'ur-pk' && /asma|female/i.test(v.name)) ||
-          voices.find((v) => v.lang.toLowerCase() === 'ur-pk') ||
-          voices.find((v) => v.lang.toLowerCase().startsWith('ur') && /female/i.test(v.name)) ||
-          voices.find((v) => v.lang.toLowerCase().startsWith('ur'))
-        : voices.find((v) => v.lang.toLowerCase() === language.toLowerCase()) ||
-          voices.find((v) => v.lang.toLowerCase().startsWith(language.slice(0, 2).toLowerCase()));
+        ? voices.find((v) => v.lang.toLowerCase().startsWith('ur') && femaleName.test(v.name))
+        : voices.find((v) => v.lang.toLowerCase().startsWith(language.slice(0, 2).toLowerCase()) && femaleName.test(v.name));
 
-      // Do not silently read Urdu text in an English voice.
+      if (!voice) {
+        this.isSpeaking = false;
+        console.error('No verified female Urdu voice is installed. Configure GOOGLE_TTS_API_KEY for ZARA premium female Urdu voice.');
+        options.onError?.();
+        options.onEnd?.();
+        return;
+      }
+
+      // Do not silently read Urdu text in an English or unverified-gender voice.
       const chunks = cleanText.match(/[^.!?۔؟]+[.!?۔؟]*/g) || [cleanText];
       let index = 0;
       const speakNext = () => {
