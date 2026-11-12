@@ -14,7 +14,8 @@ import { GeneratedWebsite, ReminderItem, UserSettings } from '../src/types/assis
 export interface Env {
   AI: { run(model: string, input: Record<string, unknown>): Promise<any> };
   // KV namespace for persistent storage (optional, configured in Cloudflare dashboard)
-  ZARA_KV?: any;\n  GOOGLE_TTS_API_KEY?: string;
+  ZARA_KV?: any;
+  GOOGLE_TTS_API_KEY?: string;
 }
 
 // In-memory stores (with showcase data)
