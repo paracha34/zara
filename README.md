@@ -50,6 +50,6 @@ Install dependencies with `npm install`, then run `npm run dev`. This builds the
 - `GET/POST /api/reminders`
 - `GET/POST /api/settings`
 
-## Important storage note
+## Persistent storage
 
-Chat history remains in browser localStorage. The current API's website, reminder, and settings collections are still in-memory and reset when the Pages Function isolate restarts. Add a provisioned KV or D1 binding before treating those records as durable cross-session/cloud data.
+A Cloudflare KV namespace named `ZARA_DATA` has been provisioned in the connected Cloudflare account and bound as `ZARA_KV`. Generated websites, reminders, and settings are read from and written to this namespace. Chat history remains in browser localStorage on the current device.
