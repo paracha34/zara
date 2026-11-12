@@ -3,7 +3,6 @@
  * Handles all /api/* routes for Cloudflare Pages & Workers deployment
  */
 
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import {
   detectIntent,
   buildZaraSystemInstruction,
@@ -13,8 +12,7 @@ import {
 import { GeneratedWebsite, ReminderItem, UserSettings } from '../src/types/assistant.ts';
 
 export interface Env {
-  GEMINI_API_KEY: string;
-  GOOGLE_TTS_API_KEY?: string;
+  AI: { run(model: string, input: Record<string, unknown>): Promise<any> };
   // KV namespace for persistent storage (optional, configured in Cloudflare dashboard)
   ZARA_KV?: any;
 }
@@ -112,7 +110,7 @@ let userSettings: UserSettings = {
   language: 'ur-PK',
   userName: 'Tony Stark',
   thinkingMode: true,
-  modelName: 'gemini-3.8-flash',
+  modelName: '@cf/zai-org/glm-4.7-flash',
 };
 
 // CORS headers for all responses
@@ -133,65 +131,42 @@ function corsPreflight(): Response {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
-async function callGemini(
+const CHAT_MODEL = '@cf/zai-org/glm-4.7-flash';
+
+async function callWorkersAI(
   env: Env,
   prompt: string,
   systemInstruction: string,
   enableHighThinking: boolean
 ): Promise<{ text: string; modelUsed: string; thinkingUsed: boolean }> {
-  if (!env.GEMINI_API_KEY) {
-    return {
-      text: 'Assalam o alaikum! ZARA hazir hai. GEMINI_API_KEY configure karein Cloudflare dashboard mein.',
-      modelUsed: 'offline',
-      thinkingUsed: false,
-    };
+  if (!env.AI || typeof env.AI.run !== 'function') {
+    throw new Error('Cloudflare Workers AI binding "AI" is missing. Configure it in the Pages project.');
   }
 
-  const ai = new GoogleGenAI({
-    apiKey: env.GEMINI_API_KEY,
-    httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+  const result = await env.AI.run(CHAT_MODEL, {
+    messages: [
+      { role: 'system', content: systemInstruction },
+      { role: 'user', content: prompt },
+    ],
+    max_tokens: 1800,
+    temperature: 0.7,
+    ...(enableHighThinking ? { reasoning_effort: 'high' } : {}),
   });
 
-  const candidateModels = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
+  const choiceText = result?.choices?.[0]?.message?.content;
+  const text = typeof result?.response === 'string'
+    ? result.response
+    : typeof choiceText === 'string'
+      ? choiceText
+      : Array.isArray(choiceText)
+        ? choiceText.map((part: any) => part?.text || '').join('')
+        : '';
 
-  for (const model of candidateModels) {
-    if (enableHighThinking) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            systemInstruction,
-            thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
-          },
-        });
-        if (response.text) {
-          return { text: response.text, modelUsed: model, thinkingUsed: true };
-        }
-      } catch {
-        // Fallback to standard config on error
-      }
-    }
-
-    try {
-      const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: { systemInstruction },
-      });
-      if (response.text) {
-        return { text: response.text, modelUsed: model, thinkingUsed: false };
-      }
-    } catch {
-      // Proceed to next candidate
-    }
+  if (!text.trim()) {
+    throw new Error('Workers AI returned an empty response.');
   }
 
-  return {
-    text: 'Assalam o alaikum! ZARA hazir hai. Main aapki poori madad karne ke liye tayyar hoon.',
-    modelUsed: 'zara-fallback',
-    thinkingUsed: false,
-  };
+  return { text: text.trim(), modelUsed: CHAT_MODEL, thinkingUsed: !!enableHighThinking };
 }
 
 async function generateWebsite(
@@ -214,7 +189,7 @@ Return ONLY a valid JSON object matching this schema:
 }`;
 
   try {
-    const result = await callGemini(env, prompt, systemInstruction, true);
+    const result = await callWorkersAI(env, prompt, systemInstruction, true);
     const cleanText = result.text.trim().replace(/^```json/i, '').replace(/^```/i, '').replace(/```$/i, '').trim();
     const parsed = JSON.parse(cleanText);
     return {
@@ -261,7 +236,8 @@ export default {
         status: 'ok',
         assistant: 'ZARA',
         bilingual: true,
-        apiKeyConfigured: !!env.GEMINI_API_KEY,
+        aiBindingConfigured: !!env.AI,
+        model: CHAT_MODEL,
         runtime: 'cloudflare-worker',
       });
     }
@@ -358,7 +334,7 @@ export default {
             `\n${userName}: ${message}\nZARA:`
           : `${userName}: ${message}\nZARA:`;
 
-      const aiResult = await callGemini(env, contextPrompt, systemInstruction, !!thinkingMode);
+      const aiResult = await callWorkersAI(env, contextPrompt, systemInstruction, !!thinkingMode);
       return json({
         reply: aiResult.text,
         intent: 'CHAT',
@@ -388,55 +364,36 @@ export default {
       return json(newSite);
     }
 
-    // Route: POST /api/tts — Urdu Realistic TTS (Google Cloud TTS)
-    if (pathname === '/api/tts' && request.method === 'POST') {
-      const body = (await request.json()) as any;
-      const { text, language = 'ur-PK', speed = 1.0 } = body;
-
-      if (!text) return json({ error: 'Text required' }, 400);
-
-      const ttsKey = env.GOOGLE_TTS_API_KEY || env.GEMINI_API_KEY;
-      if (!ttsKey) return json({ error: 'TTS not configured' }, 503);
-
-      const voiceMap: Record<string, { languageCode: string; name: string; ssmlGender: string }> = {
-        'ur-PK': { languageCode: 'ur-PK', name: 'ur-PK-Standard-A', ssmlGender: 'FEMALE' },
-        'en-US': { languageCode: 'en-US', name: 'en-US-Neural2-F', ssmlGender: 'FEMALE' },
-        'en-GB': { languageCode: 'en-GB', name: 'en-GB-Neural2-C', ssmlGender: 'FEMALE' },
-      };
-      const voice = voiceMap[language] || voiceMap['ur-PK'];
-
+    // Route: POST /api/stt — audio transcription with Cloudflare Workers AI Whisper
+    if (pathname === '/api/stt' && request.method === 'POST') {
       try {
-        const ttsResponse = await fetch(
-          `https://texttospeech.googleapis.com/v1/text:synthesize?key=${ttsKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              input: { text: String(text).slice(0, 5000) },
-              voice,
-              audioConfig: {
-                audioEncoding: 'MP3',
-                speakingRate: Math.min(Math.max(Number(speed), 0.25), 4.0),
-                pitch: 0.0,
-                effectsProfileId: ['headphone-class-device'],
-              },
-            }),
-          }
-        );
+        const body = (await request.json()) as { audio?: string; language?: string };
+        const audio = body.audio;
+        if (!audio || typeof audio !== 'string') return json({ error: 'Base64 audio is required' }, 400);
+        if (audio.length > 12_000_000) return json({ error: 'Audio file is too large (max about 8 MB)' }, 413);
+        if (!env.AI) return json({ error: 'Workers AI binding is not configured' }, 503);
 
-        if (!ttsResponse.ok) return json({ error: 'TTS API error' }, 503);
-
-        const data = (await ttsResponse.json()) as { audioContent: string };
-        const binaryStr = atob(data.audioContent);
-        const bytes = new Uint8Array(binaryStr.length);
-        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-
-        return new Response(bytes.buffer, {
-          headers: { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-cache', ...CORS_HEADERS },
+        const result = await env.AI.run('@cf/openai/whisper-large-v3-turbo', {
+          audio,
+          task: 'transcribe',
+          ...(body.language ? { language: body.language } : {}),
         });
-      } catch (err: any) {
-        return json({ error: err.message }, 503);
+        const transcript = typeof result?.text === 'string' ? result.text.trim() : '';
+        if (!transcript) return json({ error: 'No speech detected' }, 422);
+        return json({ text: transcript, modelUsed: '@cf/openai/whisper-large-v3-turbo' });
+      } catch (error) {
+        console.error('Workers AI STT error:', error);
+        return json({ error: 'Speech transcription failed. Please try again.' }, 502);
       }
+    }
+
+    // Route: POST /api/tts — Urdu TTS uses browser-native speech synthesis.
+    if (pathname === '/api/tts' && request.method === 'POST') {
+      return json({
+        available: false,
+        fallback: 'browser-speech-synthesis',
+        message: 'Workers AI does not currently provide a supported Urdu Pakistan voice. Use an Urdu voice installed in the browser or operating system.',
+      }, 501);
     }
 
     // Route: GET /api/websites
