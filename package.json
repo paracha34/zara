@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "npm run build && wrangler pages dev dist",
     "dev:frontend": "vite",
-    "build": "vite build",
+    "build": "tsc --noEmit && vite build",
     "deploy:pages": "npm run build && wrangler pages deploy dist",
     "deploy": "npm run deploy:pages",
     "preview": "vite preview",
