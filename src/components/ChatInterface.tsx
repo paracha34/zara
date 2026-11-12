@@ -229,6 +229,42 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       {/* Input Box Area */}
       <div className="py-3 border-t border-slate-800">
+        {isListening && (
+          <div
+            className="mb-3 flex items-center gap-3 rounded-xl border border-cyan-500/40 bg-cyan-950/35 px-4 py-3 shadow-[0_0_24px_rgba(34,211,238,0.12)]"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-70" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+            </span>
+            <div className="min-w-0">
+              <div className="text-xs font-semibold tracking-wide text-cyan-200">ZARA IS LISTENING</div>
+              <div className="text-[11px] text-slate-400">Speak now — live microphone activity</div>
+            </div>
+            <div className="ml-auto flex h-9 items-center gap-[3px]" aria-label="Live audio waveform">
+              {Array.from({ length: 30 }, (_, index) => (
+                <span
+                  key={index}
+                  className="w-[3px] rounded-full bg-cyan-300"
+                  style={{
+                    height: `${[9, 18, 25, 13, 30, 17, 23, 11, 28, 15, 21, 10, 26, 16, 30, 12, 22, 8, 27, 14, 24, 11, 29, 16, 20, 9, 25, 13, 22, 10][index]}px`,
+                    transformOrigin: 'center',
+                    animation: 'zara-audio-wave 850ms ease-in-out infinite alternate',
+                    animationDelay: `${index * 35}ms`,
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        <style>{`
+          @keyframes zara-audio-wave {
+            0% { transform: scaleY(0.22); opacity: 0.55; }
+            100% { transform: scaleY(1); opacity: 1; }
+          }
+        `}</style>
         <form onSubmit={handleSubmit} className="relative flex items-center gap-2">
           {/* Personality pill button */}
           <button
