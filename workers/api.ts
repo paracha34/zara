@@ -279,7 +279,12 @@ export default {
       if (parsedIntent.type === 'WEBSITE_BUILD') {
         const topic = parsedIntent.websiteTopic || 'Modern Showcase';
         let webResult: { title: string; description: string; html: string };
-        try {\n          webResult = await generateWebsite(env, topic, currentEmotion);\n        } catch (error) {\n          console.error('Website generation failed:', error);\n          return json({ error: 'Website generation failed. Check Workers AI availability and try again.' }, 503);\n        }
+        try {
+          webResult = await generateWebsite(env, topic, currentEmotion);
+        } catch (error) {
+          console.error('Website generation failed:', error);
+          return json({ error: 'Website generation failed. Check Workers AI availability and try again.' }, 503);
+        }
 
         const newSite: GeneratedWebsite = {
           id: `site-${Date.now()}`,
@@ -334,7 +339,12 @@ export default {
           : `${userName}: ${message}\nZARA:`;
 
       let aiResult: { text: string; modelUsed: string; thinkingUsed: boolean };
-      try {\n        aiResult = await callWorkersAI(env, contextPrompt, systemInstruction, !!thinkingMode);\n      } catch (error) {\n        console.error('Workers AI chat failed:', error);\n        return json({ error: 'ZARA AI is temporarily unavailable. Check Workers AI binding, model availability, or daily usage limits.' }, 503);\n      }
+      try {
+        aiResult = await callWorkersAI(env, contextPrompt, systemInstruction, !!thinkingMode);
+      } catch (error) {
+        console.error('Workers AI chat failed:', error);
+        return json({ error: 'ZARA AI is temporarily unavailable. Check Workers AI binding, model availability, or daily usage limits.' }, 503);
+      }
       return json({
         reply: aiResult.text,
         intent: 'CHAT',
@@ -350,7 +360,12 @@ export default {
       const { prompt, topic, emotion = userSettings.defaultEmotion } = body;
       const siteTopic = topic || prompt || 'Modern Interactive Application';
       let result: { title: string; description: string; html: string };
-      try {\n        result = await generateWebsite(env, siteTopic, emotion);\n      } catch (error) {\n        console.error('Website generation failed:', error);\n        return json({ error: 'Website generation failed. Check Workers AI availability and try again.' }, 503);\n      }
+      try {
+        result = await generateWebsite(env, siteTopic, emotion);
+      } catch (error) {
+        console.error('Website generation failed:', error);
+        return json({ error: 'Website generation failed. Check Workers AI availability and try again.' }, 503);
+      }
 
       const newSite: GeneratedWebsite = {
         id: `site-${Date.now()}`,
