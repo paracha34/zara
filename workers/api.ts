@@ -278,7 +278,8 @@ export default {
 
       if (parsedIntent.type === 'WEBSITE_BUILD') {
         const topic = parsedIntent.websiteTopic || 'Modern Showcase';
-        let webResult;\n        try {\n          webResult = await generateWebsite(env, topic, currentEmotion);\n        } catch (error) {\n          console.error('Website generation failed:', error);\n          return json({ error: 'Website generation failed. Check Workers AI availability and try again.' }, 503);\n        }
+        let webResult: { title: string; description: string; html: string };
+        try {\n          webResult = await generateWebsite(env, topic, currentEmotion);\n        } catch (error) {\n          console.error('Website generation failed:', error);\n          return json({ error: 'Website generation failed. Check Workers AI availability and try again.' }, 503);\n        }
 
         const newSite: GeneratedWebsite = {
           id: `site-${Date.now()}`,
@@ -332,7 +333,8 @@ export default {
             `\n${userName}: ${message}\nZARA:`
           : `${userName}: ${message}\nZARA:`;
 
-      let aiResult;\n      try {\n        aiResult = await callWorkersAI(env, contextPrompt, systemInstruction, !!thinkingMode);\n      } catch (error) {\n        console.error('Workers AI chat failed:', error);\n        return json({ error: 'ZARA AI is temporarily unavailable. Check Workers AI binding, model availability, or daily usage limits.' }, 503);\n      }
+      let aiResult: { text: string; modelUsed: string; thinkingUsed: boolean };
+      try {\n        aiResult = await callWorkersAI(env, contextPrompt, systemInstruction, !!thinkingMode);\n      } catch (error) {\n        console.error('Workers AI chat failed:', error);\n        return json({ error: 'ZARA AI is temporarily unavailable. Check Workers AI binding, model availability, or daily usage limits.' }, 503);\n      }
       return json({
         reply: aiResult.text,
         intent: 'CHAT',
@@ -347,7 +349,8 @@ export default {
       const body = (await request.json()) as any;
       const { prompt, topic, emotion = userSettings.defaultEmotion } = body;
       const siteTopic = topic || prompt || 'Modern Interactive Application';
-      let result;\n      try {\n        result = await generateWebsite(env, siteTopic, emotion);\n      } catch (error) {\n        console.error('Website generation failed:', error);\n        return json({ error: 'Website generation failed. Check Workers AI availability and try again.' }, 503);\n      }
+      let result: { title: string; description: string; html: string };
+      try {\n        result = await generateWebsite(env, siteTopic, emotion);\n      } catch (error) {\n        console.error('Website generation failed:', error);\n        return json({ error: 'Website generation failed. Check Workers AI availability and try again.' }, 503);\n      }
 
       const newSite: GeneratedWebsite = {
         id: `site-${Date.now()}`,
