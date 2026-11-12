@@ -102,6 +102,8 @@ export const soundEffects = new AudioSynth();
 // Browser-native TTS. Voice availability depends on the user's OS/browser language packs.
 class TtsController {
   private isSpeaking = false;
+  private audio: HTMLAudioElement | null = null;
+  private activeAudioUrl: string | null = null;
 
   async speak(
     text: string,
@@ -129,7 +131,7 @@ class TtsController {
     this.isSpeaking = true;
     options.onStart?.();
 
-    if (typeof window === 'undefined' || !window.speechSynthesis) {
+    if (typeof window === 'undefined') {
       this.isSpeaking = false;
       options.onError?.();
       options.onEnd?.();
@@ -146,17 +148,20 @@ class TtsController {
       if (response.ok && response.headers.get('content-type')?.includes('audio/')) {
         const audioBlob = await response.blob();
         const audioUrl = URL.createObjectURL(audioBlob);
+        this.activeAudioUrl = audioUrl;
         const player = new Audio(audioUrl);
         this.audio = player;
         player.onended = () => {
           URL.revokeObjectURL(audioUrl);
           this.audio = null;
+          this.activeAudioUrl = null;
           this.isSpeaking = false;
           options.onEnd?.();
         };
         player.onerror = () => {
           URL.revokeObjectURL(audioUrl);
           this.audio = null;
+          this.activeAudioUrl = null;
           this.isSpeaking = false;
           options.onError?.();
           options.onEnd?.();
@@ -166,6 +171,13 @@ class TtsController {
       }
     } catch (error) {
       console.warn('Cloud TTS unavailable; using installed browser voice:', error);
+    }
+
+    if (!window.speechSynthesis) {
+      this.isSpeaking = false;
+      options.onError?.();
+      options.onEnd?.();
+      return;
     }
 
     try {
@@ -222,6 +234,16 @@ class TtsController {
   }
 
   stop() {
+    if (this.audio) {
+      this.audio.pause();
+      this.audio.removeAttribute('src');
+      this.audio.load();
+      this.audio = null;
+    }
+    if (this.activeAudioUrl) {
+      URL.revokeObjectURL(this.activeAudioUrl);
+      this.activeAudioUrl = null;
+    }
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
@@ -254,8 +276,11 @@ export function createSpeechRecognizer(
     return {
       start: async () => {
         try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          recorder = new MediaRecorder(stream);
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+          });
+          const preferredMime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'].find((type) => MediaRecorder.isTypeSupported(type));
+          recorder = preferredMime ? new MediaRecorder(stream, { mimeType: preferredMime }) : new MediaRecorder(stream);
           chunks = [];
           recorder.ondataavailable = (event: BlobEvent) => {
             if (event.data.size > 0) chunks.push(event.data);
@@ -288,7 +313,7 @@ export function createSpeechRecognizer(
               onEnd();
             }
           };
-          recorder.start();
+          recorder.start(250);
         } catch (error) {
           stream?.getTracks().forEach((track) => track.stop());
           stream = null;
