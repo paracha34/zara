@@ -6,3 +6,8 @@ compatibility_flags = ["nodejs_compat"]
 # Native Cloudflare Workers AI binding. No provider API key is required.
 [ai]
 binding = "AI"
+
+# Durable app data for generated websites, reminders, and user settings.
+[[kv_namespaces]]
+binding = "ZARA_KV"
+id = "d6f728d828b74d77af35fd6ad608adff"
