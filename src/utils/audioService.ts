@@ -136,6 +136,38 @@ class TtsController {
       return;
     }
 
+    // Prefer server-generated premium Urdu female audio; browser voices remain a fallback.
+    try {
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: cleanText, language: options.language || 'ur-PK', speed: options.speed || 1 }),
+      });
+      if (response.ok && response.headers.get('content-type')?.includes('audio/')) {
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const player = new Audio(audioUrl);
+        this.audio = player;
+        player.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+          this.audio = null;
+          this.isSpeaking = false;
+          options.onEnd?.();
+        };
+        player.onerror = () => {
+          URL.revokeObjectURL(audioUrl);
+          this.audio = null;
+          this.isSpeaking = false;
+          options.onError?.();
+          options.onEnd?.();
+        };
+        await player.play();
+        return;
+      }
+    } catch (error) {
+      console.warn('Cloud TTS unavailable; using installed browser voice:', error);
+    }
+
     try {
       const synth = window.speechSynthesis;
       let voices = synth.getVoices();
