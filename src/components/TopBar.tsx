@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mic, Volume2, VolumeX, Sparkles, Settings as SettingsIcon } from 'lucide-react';
+import { Mic, Camera, Volume2, VolumeX, Sparkles, Settings as SettingsIcon } from 'lucide-react';
 import { EmotionType, EMOTIONS } from '../utils/assistantLogic.ts';
 
 export type NavTab = 'chat' | 'builder' | 'reminders' | 'emotions';
@@ -11,6 +11,7 @@ interface TopBarProps {
   onEmotionClick: () => void;
   isListening: boolean;
   onMicToggle: () => void;
+  onCameraClick: () => void;
   ttsEnabled: boolean;
   onToggleTts: () => void;
   onOpenSettings: () => void;
@@ -25,6 +26,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onEmotionClick,
   isListening,
   onMicToggle,
+  onCameraClick,
   ttsEnabled,
   onToggleTts,
   onOpenSettings,
@@ -125,6 +127,16 @@ export const TopBar: React.FC<TopBarProps> = ({
           aria-label="Toggle Voice Output"
         >
           {ttsEnabled ? <Volume2 className="w-3.5 md:w-4 h-3.5 md:h-4 text-emerald-400" /> : <VolumeX className="w-3.5 md:w-4 h-3.5 md:h-4 text-slate-500" />}
+        </button>
+
+        {/* Camera access button */}
+        <button
+          onClick={onCameraClick}
+          className="p-1.5 md:p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-cyan-300 transition"
+          title="Open camera preview"
+          aria-label="Open camera"
+        >
+          <Camera className="w-3.5 md:w-4 h-3.5 md:h-4" />
         </button>
 
         {/* Settings button */}
