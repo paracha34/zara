@@ -4,16 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "npm run build && wrangler pages dev dist",
     "dev:cf": "concurrently \"tsx server.ts\" \"vite\"",
     "dev:server": "tsx server.ts",
     "dev:frontend": "vite",
     "start": "tsx server.ts",
     "build": "vite build",
-    "build:worker": "wrangler deploy --dry-run",
     "deploy:pages": "npm run build && wrangler pages deploy dist",
-    "deploy:worker": "wrangler deploy workers/api.ts",
-    "deploy": "npm run deploy:worker && npm run deploy:pages",
+    "deploy": "npm run deploy:pages",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
