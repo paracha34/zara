@@ -99,10 +99,9 @@ class AudioSynth {
 
 export const soundEffects = new AudioSynth();
 
-// Realistic Urdu TTS using Google Cloud Text-to-Speech API with browser fallback
+// Browser-native TTS. Voice availability depends on the user's OS/browser language packs.
 class TtsController {
   private isSpeaking = false;
-  private audioElement: HTMLAudioElement | null = null;
 
   async speak(
     text: string,
@@ -114,13 +113,11 @@ class TtsController {
       onError?: () => void;
     } = {}
   ) {
-    // Clean markdown from text and speak first 300 chars for fast, responsive output
     const cleanText = text
-      .replace(/```[\s\S]*?```/g, '')
+      .replace(/```[\\s\\S]*?```/g, '')
       .replace(/`([^`]+)`/g, '$1')
       .replace(/[*_#~]/g, '')
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-      .slice(0, 300)
+      .replace(/\\[([^\\]]+)\\]\\([^)]+\\)/g, '$1')
       .trim();
 
     if (!cleanText) {
@@ -132,101 +129,65 @@ class TtsController {
     this.isSpeaking = true;
     options.onStart?.();
 
-    try {
-      // Call backend TTS endpoint
-      const response = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: cleanText,
-          language: options.language || 'ur-PK',
-          speed: options.speed || 1.35,
-        }),
-      });
-
-      if (!response.ok) {
-        // Fallback to browser TTS
-        this.fallbackBrowserTTS(cleanText, options);
-        return;
-      }
-
-      const audioBlob = await response.blob();
-      const audioUrl = URL.createObjectURL(audioBlob);
-
-      if (this.audioElement) {
-        this.audioElement.pause();
-        URL.revokeObjectURL(this.audioElement.src);
-      }
-
-      this.audioElement = new Audio(audioUrl);
-      this.audioElement.playbackRate = options.speed ? options.speed * 1.2 : 1.35;
-
-      this.audioElement.onended = () => {
-        this.isSpeaking = false;
-        URL.revokeObjectURL(audioUrl);
-        options.onEnd?.();
-      };
-
-      this.audioElement.onerror = () => {
-        this.isSpeaking = false;
-        options.onError?.();
-        // Fallback
-        this.fallbackBrowserTTS(cleanText, options);
-      };
-
-      await this.audioElement.play();
-    } catch (err) {
-      this.fallbackBrowserTTS(cleanText, options);
-    }
-  }
-
-  private fallbackBrowserTTS(
-    text: string,
-    options: { speed?: number; language?: string; onStart?: () => void; onEnd?: () => void; onError?: () => void }
-  ) {
     if (typeof window === 'undefined' || !window.speechSynthesis) {
       this.isSpeaking = false;
+      options.onError?.();
       options.onEnd?.();
       return;
     }
 
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = options.speed ? options.speed * 1.2 : 1.35; // Fast responsive rate
-    utterance.pitch = 1.05;
-    utterance.lang = options.language || 'ur-PK';
+    try {
+      const synth = window.speechSynthesis;
+      let voices = synth.getVoices();
+      if (!voices.length) {
+        voices = await new Promise<SpeechSynthesisVoice[]>((resolve) => {
+          const done = () => resolve(synth.getVoices());
+          synth.addEventListener('voiceschanged', done, { once: true });
+          window.setTimeout(done, 1200);
+        });
+      }
 
-    const voices = window.speechSynthesis.getVoices();
-    // Try to find best Urdu or English voice
-    const bestVoice =
-      voices.find((v) => v.lang.startsWith('ur')) ||
-      voices.find((v) => v.lang.includes('en-GB')) ||
-      voices.find((v) => v.lang.includes('en-US')) ||
-      voices[0];
+      const language = options.language || 'ur-PK';
+      const isUrdu = language.toLowerCase().startsWith('ur');
+      const voice = isUrdu
+        ? voices.find((v) => v.lang.toLowerCase() === 'ur-pk') ||
+          voices.find((v) => v.lang.toLowerCase().startsWith('ur'))
+        : voices.find((v) => v.lang.toLowerCase() === language.toLowerCase()) ||
+          voices.find((v) => v.lang.toLowerCase().startsWith(language.slice(0, 2).toLowerCase()));
 
-    if (bestVoice) utterance.voice = bestVoice;
-
-    utterance.onstart = () => {
-      this.isSpeaking = true;
-      options.onStart?.();
-    };
-    utterance.onend = () => {
-      this.isSpeaking = false;
-      options.onEnd?.();
-    };
-    utterance.onerror = () => {
+      // Do not silently read Urdu text in an English voice.
+      const chunks = cleanText.match(/[^.!?۔؟]+[.!?۔؟]*/g) || [cleanText];
+      let index = 0;
+      const speakNext = () => {
+        if (index >= chunks.length) {
+          this.isSpeaking = false;
+          options.onEnd?.();
+          return;
+        }
+        const part = chunks[index++].trim();
+        if (!part) return speakNext();
+        const utterance = new SpeechSynthesisUtterance(part);
+        utterance.lang = language;
+        utterance.rate = Math.min(1.25, Math.max(0.75, options.speed || 1));
+        utterance.pitch = 1.08;
+        if (voice) utterance.voice = voice;
+        utterance.onend = speakNext;
+        utterance.onerror = () => {
+          this.isSpeaking = false;
+          options.onError?.();
+          options.onEnd?.();
+        };
+        synth.speak(utterance);
+      };
+      speakNext();
+    } catch {
       this.isSpeaking = false;
       options.onError?.();
-    };
-
-    window.speechSynthesis.speak(utterance);
+      options.onEnd?.();
+    }
   }
 
   stop() {
-    if (this.audioElement) {
-      this.audioElement.pause();
-      this.audioElement = null;
-    }
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
@@ -251,7 +212,67 @@ export function createSpeechRecognizer(
 
   const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
   if (!SpeechRec) {
-    return null;
+    // Fallback: record microphone audio and transcribe it with Cloudflare Workers AI Whisper.
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') return null;
+    let recorder: MediaRecorder | null = null;
+    let stream: MediaStream | null = null;
+    let chunks: BlobPart[] = [];
+    let stoppedByUser = false;
+    return {
+      start: async () => {
+        try {
+          stoppedByUser = false;
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          recorder = new MediaRecorder(stream);
+          chunks = [];
+          recorder.ondataavailable = (event: BlobEvent) => {
+            if (event.data.size > 0) chunks.push(event.data);
+          };
+          recorder.onerror = (event: Event) => onError(event);
+          recorder.onstop = async () => {
+            try {
+              if (!stoppedByUser && chunks.length) {
+                const blob = new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' });
+                const bytes = new Uint8Array(await blob.arrayBuffer());
+                let binary = '';
+                for (let i = 0; i < bytes.length; i += 0x8000) {
+                  binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+                }
+                const audio = btoa(binary);
+                const response = await fetch('/api/stt', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ audio, language: language === 'ur-PK' ? 'ur' : 'en' }),
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Speech transcription failed');
+                if (data.text) onResult(data.text);
+              }
+            } catch (error) {
+              onError(error);
+            } finally {
+              stream?.getTracks().forEach((track) => track.stop());
+              stream = null;
+              onEnd();
+            }
+          };
+          recorder.start();
+        } catch (error) {
+          stream?.getTracks().forEach((track) => track.stop());
+          stream = null;
+          onError(error);
+          onEnd();
+        }
+      },
+      stop: () => {
+        stoppedByUser = false;
+        if (recorder && recorder.state !== 'inactive') recorder.stop();
+        else {
+          stream?.getTracks().forEach((track) => track.stop());
+          onEnd();
+        }
+      },
+    };
   }
 
   const recognition = new SpeechRec();
