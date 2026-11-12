@@ -34,8 +34,8 @@ Install dependencies with `npm install`, then run `npm run dev`. This builds the
 
 ## Voice behavior and limitations
 
-- Speech recognition first uses the browser's native Web Speech API when available.
-- If native speech recognition is unavailable, the app records microphone audio and sends it to the Workers AI Whisper endpoint at `POST /api/stt`.
+- Urdu (`ur-PK`) microphone input is recorded with the browser MediaRecorder API and transcribed through Cloudflare Workers AI Whisper at `POST /api/stt`.
+- English (`en-US`) uses the browser's native Web Speech API when available.
 - Speech output uses browser/OS speech synthesis. The app prefers an installed Urdu voice and does not deliberately select an English voice for Urdu text.
 - Workers AI currently does not provide a supported Urdu (Pakistan) TTS voice for this application. A natural female Urdu voice cannot be guaranteed without a compatible installed OS/browser voice or a separate Urdu TTS provider.
 
