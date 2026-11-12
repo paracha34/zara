@@ -60,7 +60,7 @@ export default function App() {
     language: 'ur-PK',
     userName: 'Tony Stark',
     thinkingMode: true,
-    modelName: 'gemini-3.8-flash',
+    modelName: '@cf/zai-org/glm-4.7-flash',
   });
 
   const [isEmotionModalOpen, setIsEmotionModalOpen] = useState(false);
