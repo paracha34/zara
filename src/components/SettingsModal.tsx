@@ -130,8 +130,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-cyan-400" />
                 <div>
-                  <h4 className="text-xs font-bold text-white">Gemini High Thinking Mode</h4>
-                  <p className="text-[11px] text-cyan-400 font-mono">model: gemini-3.8-flash · ThinkingLevel.HIGH</p>
+                  <h4 className="text-xs font-bold text-white">Workers AI Reasoning Mode</h4>
+                  <p className="text-[11px] text-cyan-400 font-mono">model: @cf/zai-org/glm-4.7-flash · reasoning_effort: high</p>
                 </div>
               </div>
               <input
@@ -142,14 +142,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               />
             </div>
             <p className="text-[11px] text-slate-400 mt-2">
-              Unlocks deep reasoning steps for complex coding, math, architecture, and multi-step tool workflows.
+              Requests higher reasoning effort for complex questions. Availability and response behavior depend on the Workers AI model.
             </p>
           </div>
 
           {/* Telemetry info */}
           <div className="flex items-center gap-2 p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-[11px] text-slate-400">
             <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>Secure Server Proxy: Your API keys are managed server-side in AI Studio Secrets.</span>
+            <span>Cloudflare Workers AI runs server-side through the native AI binding. No Gemini API key is needed for production.</span>
           </div>
         </div>
 
