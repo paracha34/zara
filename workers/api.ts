@@ -18,7 +18,7 @@ export interface Env {
 }
 
 // In-memory stores (with showcase data)
-const storedWebsites: GeneratedWebsite[] = [
+const defaultWebsites: GeneratedWebsite[] = [
   {
     id: 'site-iron-man-hud',
     title: 'Stark Industries Arc Command Hub',
@@ -84,7 +84,7 @@ const storedWebsites: GeneratedWebsite[] = [
   },
 ];
 
-const storedReminders: ReminderItem[] = [
+const defaultReminders: ReminderItem[] = [
   {
     id: 'rem-1',
     task: 'Review Stark Industries AI architecture and Jarvis telemetry',
@@ -103,7 +103,7 @@ const storedReminders: ReminderItem[] = [
   },
 ];
 
-let userSettings: UserSettings = {
+const defaultUserSettings: UserSettings = {
   defaultEmotion: 'Friendly',
   ttsEnabled: true,
   ttsSpeed: 1.0,
@@ -129,6 +129,18 @@ function json(data: unknown, status = 200): Response {
 
 function corsPreflight(): Response {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
+
+async function readCollection<T>(env: Env, key: string, fallback: T): Promise<T> {
+  if (!env.ZARA_KV) return fallback;
+  const value = await env.ZARA_KV.get(key, 'json');
+  if (value !== null && value !== undefined) return value as T;
+  await env.ZARA_KV.put(key, JSON.stringify(fallback));
+  return fallback;
+}
+
+async function writeCollection<T>(env: Env, key: string, value: T): Promise<void> {
+  if (env.ZARA_KV) await env.ZARA_KV.put(key, JSON.stringify(value));
 }
 
 const CHAT_MODEL = '@cf/zai-org/glm-4.7-flash';
@@ -227,6 +239,10 @@ export default {
     const url = new URL(request.url);
     const { pathname } = url;
 
+    const storedWebsites = await readCollection<GeneratedWebsite[]>(env, 'websites', defaultWebsites);
+    const storedReminders = await readCollection<ReminderItem[]>(env, 'reminders', defaultReminders);
+    let userSettings = await readCollection<UserSettings>(env, 'settings', defaultUserSettings);
+
     // Handle CORS preflight
     if (request.method === 'OPTIONS') return corsPreflight();
 
@@ -270,6 +286,7 @@ export default {
       if (parsedIntent.type === 'CHANGE_EMOTION') {
         const newEmotion = parsedIntent.emotionTarget || 'Friendly';
         userSettings.defaultEmotion = newEmotion;
+        await writeCollection(env, 'settings', userSettings);
         const meta = EMOTIONS[newEmotion];
         return json({
           reply: `Emotion switched to **${meta.nameEn}** (${meta.nameRomanUrdu} / ${meta.nameUrdu})!\n\n${meta.tagline}`,
@@ -294,6 +311,7 @@ export default {
           updatedAt: new Date().toISOString(),
         };
         storedWebsites.unshift(newSite);
+        await writeCollection(env, 'websites', storedWebsites);
 
         return json({
           reply: `Website successfully ban gayi hai! 🚀\n\n**Title:** ${webResult.title}\n**Description:** ${webResult.description}\n\nAap "Website Studio" tab mein iska live interactive preview dekh sakte hain!`,
@@ -316,6 +334,7 @@ export default {
           priority: 'normal',
         };
         storedReminders.unshift(reminder);
+        await writeCollection(env, 'reminders', storedReminders);
         return json({
           reply: `Reminder set kar diya! ⏰\n📌 **Task:** ${reminder.task}\n⏱️ **${delayMins} minute(s) baad**`,
           intent: 'REMINDER',
@@ -361,6 +380,7 @@ export default {
         updatedAt: new Date().toISOString(),
       };
       storedWebsites.unshift(newSite);
+      await writeCollection(env, 'websites', storedWebsites);
       return json(newSite);
     }
 
@@ -416,6 +436,7 @@ export default {
           html,
           updatedAt: new Date().toISOString(),
         };
+        await writeCollection(env, 'websites', storedWebsites);
         return json(storedWebsites[existingIdx]);
       } else {
         const newSite: GeneratedWebsite = {
@@ -428,6 +449,7 @@ export default {
           updatedAt: new Date().toISOString(),
         };
         storedWebsites.unshift(newSite);
+        await writeCollection(env, 'websites', storedWebsites);
         return json(newSite);
       }
     }
@@ -449,6 +471,7 @@ export default {
           priority,
         };
         storedReminders.unshift(reminder);
+        await writeCollection(env, 'reminders', storedReminders);
         return json(reminder);
       }
     }
@@ -462,11 +485,13 @@ export default {
         if (!item) return json({ error: 'Not found' }, 404);
         if (body.status) item.status = body.status;
         if (body.dueTime) item.dueTime = Number(body.dueTime);
+        await writeCollection(env, 'reminders', storedReminders);
         return json(item);
       }
       if (request.method === 'DELETE') {
         const idx = storedReminders.findIndex((r) => r.id === id);
         if (idx >= 0) storedReminders.splice(idx, 1);
+        await writeCollection(env, 'reminders', storedReminders);
         return json({ success: true });
       }
     }
@@ -477,6 +502,7 @@ export default {
       if (request.method === 'POST') {
         const body = (await request.json()) as any;
         userSettings = { ...userSettings, ...body };
+        await writeCollection(env, 'settings', userSettings);
         return json(userSettings);
       }
     }
