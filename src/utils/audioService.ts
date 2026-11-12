@@ -150,7 +150,9 @@ class TtsController {
       const language = options.language || 'ur-PK';
       const isUrdu = language.toLowerCase().startsWith('ur');
       const voice = isUrdu
-        ? voices.find((v) => v.lang.toLowerCase() === 'ur-pk') ||
+        ? voices.find((v) => v.lang.toLowerCase() === 'ur-pk' && /asma|female/i.test(v.name)) ||
+          voices.find((v) => v.lang.toLowerCase() === 'ur-pk') ||
+          voices.find((v) => v.lang.toLowerCase().startsWith('ur') && /female/i.test(v.name)) ||
           voices.find((v) => v.lang.toLowerCase().startsWith('ur'))
         : voices.find((v) => v.lang.toLowerCase() === language.toLowerCase()) ||
           voices.find((v) => v.lang.toLowerCase().startsWith(language.slice(0, 2).toLowerCase()));
